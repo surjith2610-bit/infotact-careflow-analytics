@@ -3,253 +3,191 @@ CareFlow - Clinical Pathway Process Mining System
 Module: data_generator/generate_logs.py
 
 Description:
-    Synthetic hospital event log generator designed for healthcare process mining.
+    Synthetic hospital EHR event log generator designed for healthcare process mining.
     Simulates realistic patient journeys through clinical workflows, introducing
-    configurable process bottlenecks (e.g., X-Ray -> Triage rework loop).
+    a controlled process bug (X-Ray -> Triage rework loop in ~40% of X-Ray cases).
 """
 
 import os
 import random
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
 import pandas as pd
 
 
 # -----------------------------------------------------------------------------
-# Configuration & Clinical Workflow Constants
+# Clinical Activities & Configuration Constants
 # -----------------------------------------------------------------------------
-DEFAULT_CASE_COUNT = 150
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "raw_event_logs.csv")
+TOTAL_PATIENTS = 800
 
-# Clinical activities catalog
-ACTIVITIES = {
-    "REGISTRATION": "Registration",
-    "TRIAGE": "Triage",
-    "XRAY": "X-Ray",
-    "LAB_TEST": "Lab Test",
-    "DOCTOR_CONSULT": "Doctor Consult",
-    "PAPERWORK_CHECK": "Paperwork Check",
-    "DISCHARGE": "Discharge",
-}
+ACTIVITIES = [
+    "Registration",
+    "Triage",
+    "X-Ray",
+    "Lab Test",
+    "Doctor Consult",
+    "Paperwork Check",
+    "Discharge",
+]
 
-# Typical activity durations in minutes (min_duration, max_duration)
-ACTIVITY_DURATIONS = {
-    ACTIVITIES["REGISTRATION"]: (5, 15),
-    ACTIVITIES["TRIAGE"]: (10, 25),
-    ACTIVITIES["XRAY"]: (20, 60),
-    ACTIVITIES["LAB_TEST"]: (30, 90),
-    ACTIVITIES["DOCTOR_CONSULT"]: (15, 45),
-    ACTIVITIES["PAPERWORK_CHECK"]: (10, 30),
-    ACTIVITIES["DISCHARGE"]: (5, 20),
-}
-
-# Waiting/transit time between steps (min_wait, max_wait in minutes)
-DEFAULT_TRANSIT_TIME = (5, 20)
+# Output path definition
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "raw_ehr_logs.csv")
 
 
-class HospitalEventLogGenerator:
+def generate_patient_flow(patient_id: int, start_time: datetime) -> list:
     """
-    Simulates clinical pathway event logs with realistic time distributions
-    and intentional operational inefficiencies for process mining analysis.
+    Generates a realistic sequence of clinical events for a single patient.
+
+    Args:
+        patient_id (int): Numerical patient index (1 to 800).
+        start_time (datetime): Arrival / Registration timestamp.
+
+    Returns:
+        list: List of dictionaries representing event log rows for this patient.
     """
+    case_id = f"P{patient_id:04d}"
+    events = []
+    current_time = start_time
 
-    def __init__(
-        self,
-        case_count: int = DEFAULT_CASE_COUNT,
-        loopback_probability: float = 0.40,
-        start_date: datetime = None,
-        random_seed: int = 42,
-    ):
-        """
-        Initialize the generator.
+    # Decide pathway type:
+    # 50% Test Flow (X-Ray pathway), 35% Normal Flow, 15% Lab Flow
+    pathway_choice = random.random()
 
-        Args:
-            case_count (int): Total number of patient cases (default: 150).
-            loopback_probability (float): Rate of X-Ray -> Triage rework (default: 0.40).
-            start_date (datetime): Base start timestamp for log generation.
-            random_seed (int): Seed for reproducibility.
-        """
-        self.case_count = case_count
-        self.loopback_probability = loopback_probability
-        self.start_date = start_date or datetime(2026, 9, 1, 8, 0, 0)
-        random.seed(random_seed)
+    if pathway_choice < 0.50:
+        # Test Flow (X-Ray pathway)
+        # Normal sequence: Registration -> Triage -> X-Ray -> Doctor Consult -> Discharge (+ optional Paperwork Check)
+        sequence = ["Registration", "Triage", "X-Ray"]
 
-    def _get_next_timestamp(self, current_time: datetime, activity: str) -> datetime:
-        """Calculates realistic next event timestamp incorporating activity execution & waiting time."""
-        dur_min, dur_max = ACTIVITY_DURATIONS.get(activity, (10, 30))
-        wait_min, wait_max = DEFAULT_TRANSIT_TIME
-        total_delta = random.randint(dur_min, dur_max) + random.randint(wait_min, wait_max)
-        return current_time + timedelta(minutes=total_delta)
+        # 🔥 CRITICAL: INJECT PROCESS BUG (~40% of X-Ray cases loop back to Triage immediately after X-Ray)
+        if random.random() < 0.40:
+            sequence.append("Triage")  # Loop-back bug
 
-    def _generate_pathway(self, case_id: str, case_start_time: datetime) -> List[Dict[str, Any]]:
-        """
-        Generates a sequence of clinical events for a single patient trace.
-        """
-        events: List[Dict[str, Any]] = []
-        current_time = case_start_time
+        sequence.append("Doctor Consult")
 
-        # Step 1: Registration
+        # Optionally add Paperwork Check to reach 4-7 events range
+        if random.random() < 0.70:
+            sequence.append("Paperwork Check")
+
+        sequence.append("Discharge")
+
+    elif pathway_choice < 0.85:
+        # Normal Flow
+        # Registration -> Triage -> Doctor Consult -> Discharge (+ optional Lab Test / Paperwork Check)
+        sequence = ["Registration", "Triage"]
+
+        if random.random() < 0.30:
+            sequence.append("Lab Test")
+
+        sequence.append("Doctor Consult")
+
+        if random.random() < 0.60:
+            sequence.append("Paperwork Check")
+
+        sequence.append("Discharge")
+
+    else:
+        # Lab Flow
+        sequence = ["Registration", "Triage", "Lab Test", "Doctor Consult", "Paperwork Check", "Discharge"]
+
+    # Build timed event log rows
+    for i, activity in enumerate(sequence):
         events.append({
             "Case_ID": case_id,
-            "Activity_Name": ACTIVITIES["REGISTRATION"],
+            "Activity_Name": activity,
             "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
         })
 
-        # Step 2: Triage
-        current_time = self._get_next_timestamp(current_time, ACTIVITIES["REGISTRATION"])
-        events.append({
-            "Case_ID": case_id,
-            "Activity_Name": ACTIVITIES["TRIAGE"],
-            "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        # Add random delay (5 to 20 minutes) between events to ensure strictly increasing timestamps
+        delay_minutes = random.randint(5, 20)
+        current_time += timedelta(minutes=delay_minutes)
 
-        # Pathway Branching:
-        # 1: Imaging pathway (with potential rework loop)
-        # 2: Lab diagnostic pathway
-        # 3: Fast-track consultation pathway
-        path_type = random.choices(["imaging", "lab", "fast_track"], weights=[0.55, 0.30, 0.15])[0]
+    return events
 
-        if path_type == "imaging":
-            current_time = self._get_next_timestamp(current_time, ACTIVITIES["TRIAGE"])
-            events.append({
-                "Case_ID": case_id,
-                "Activity_Name": ACTIVITIES["XRAY"],
-                "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
 
-            # Intentional Process Bottleneck: 40% loop back to Triage
-            if random.random() < self.loopback_probability:
-                # Loop-back: X-Ray -> Triage (Re-evaluation / Incomplete clinical order rework)
-                current_time = self._get_next_timestamp(current_time, ACTIVITIES["XRAY"])
-                events.append({
-                    "Case_ID": case_id,
-                    "Activity_Name": ACTIVITIES["TRIAGE"],
-                    "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                })
+def generate_all_logs(total_patients: int = TOTAL_PATIENTS) -> pd.DataFrame:
+    """
+    Orchestrates log generation for all patients and formats into a DataFrame.
 
-                # Re-consultation / Secondary routing
-                current_time = self._get_next_timestamp(current_time, ACTIVITIES["TRIAGE"])
-                events.append({
-                    "Case_ID": case_id,
-                    "Activity_Name": ACTIVITIES["DOCTOR_CONSULT"],
-                    "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                })
-            else:
-                current_time = self._get_next_timestamp(current_time, ACTIVITIES["XRAY"])
-                events.append({
-                    "Case_ID": case_id,
-                    "Activity_Name": ACTIVITIES["DOCTOR_CONSULT"],
-                    "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                })
+    Args:
+        total_patients (int): Total number of patient cases to generate.
 
-        elif path_type == "lab":
-            current_time = self._get_next_timestamp(current_time, ACTIVITIES["TRIAGE"])
-            events.append({
-                "Case_ID": case_id,
-                "Activity_Name": ACTIVITIES["LAB_TEST"],
-                "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
+    Returns:
+        pd.DataFrame: PM4Py compatible DataFrame with columns [Case_ID, Activity_Name, Timestamp].
+    """
+    all_events = []
+    base_start_time = datetime.now().replace(microsecond=0)
 
-            current_time = self._get_next_timestamp(current_time, ACTIVITIES["LAB_TEST"])
-            events.append({
-                "Case_ID": case_id,
-                "Activity_Name": ACTIVITIES["DOCTOR_CONSULT"],
-                "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
+    for i in range(1, total_patients + 1):
+        # Stagger patient arrivals (0 to 15 mins offset per patient)
+        arrival_offset = timedelta(minutes=random.randint(0, 15) * (i - 1) // 3)
+        patient_start_time = base_start_time + arrival_offset
 
-        else:  # fast_track
-            current_time = self._get_next_timestamp(current_time, ACTIVITIES["TRIAGE"])
-            events.append({
-                "Case_ID": case_id,
-                "Activity_Name": ACTIVITIES["DOCTOR_CONSULT"],
-                "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
+        patient_events = generate_patient_flow(i, patient_start_time)
+        all_events.extend(patient_events)
 
-        # Post-consultation: Paperwork Check
-        current_time = self._get_next_timestamp(current_time, ACTIVITIES["DOCTOR_CONSULT"])
-        events.append({
-            "Case_ID": case_id,
-            "Activity_Name": ACTIVITIES["PAPERWORK_CHECK"],
-            "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+    df = pd.DataFrame(all_events)
 
-        # Final step: Discharge
-        current_time = self._get_next_timestamp(current_time, ACTIVITIES["PAPERWORK_CHECK"])
-        events.append({
-            "Case_ID": case_id,
-            "Activity_Name": ACTIVITIES["DISCHARGE"],
-            "Timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+    # Convert Timestamp to datetime type for accurate sorting
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
-        return events
+    # Ensure dataset is sorted by Case_ID and Timestamp
+    df = df.sort_values(by=["Case_ID", "Timestamp"]).reset_index(drop=True)
 
-    def generate(self) -> pd.DataFrame:
-        """
-        Executes generation of all patient cases and compiles into a pandas DataFrame.
-        """
-        all_events: List[Dict[str, Any]] = []
+    # Format Timestamp back to clean string format
+    df["Timestamp"] = df["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        for i in range(1, self.case_count + 1):
-            case_id = f"PAT-{i:04d}"
-            # Scatter patient arrival over several days/hours
-            arrival_offset_hours = (i - 1) * random.uniform(0.5, 2.5)
-            case_start = self.start_date + timedelta(hours=arrival_offset_hours)
-            case_events = self._generate_pathway(case_id, case_start)
-            all_events.extend(case_events)
-
-        df = pd.DataFrame(all_events)
-        return df
-
-    def save_to_csv(self, output_path: str = OUTPUT_FILE) -> str:
-        """
-        Generates and saves the event logs to a CSV file.
-        """
-        df = self.generate()
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        df.to_csv(output_path, index=False)
-        return output_path
+    return df
 
 
 def main():
-    """CLI execution entrypoint."""
+    """
+    Main function to generate logs, save to CSV, and display validation stats.
+    """
+    random.seed(42)  # For reproducible output
+
     print("=" * 60)
-    print("CareFlow - Synthetic Clinical Event Log Generator")
+    print("CareFlow - EHR Event Log Generator")
     print("=" * 60)
+    print(f"Generating synthetic logs for {TOTAL_PATIENTS} patients...")
 
-    generator = HospitalEventLogGenerator(
-        case_count=150,
-        loopback_probability=0.40,
-        random_seed=42,
-    )
+    # Generate logs
+    df = generate_all_logs(TOTAL_PATIENTS)
 
-    output_file = generator.save_to_csv()
-    df = pd.read_csv(output_file)
+    # Ensure output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    print(f"[SUCCESS] Generated synthetic event log dataset.")
-    print(f"[OUTPUT]  Location  : {output_file}")
-    print(f"[METRICS] Total Rows: {len(df):,}")
-    print(f"[METRICS] Total Cases     : {df['Case_ID'].nunique():,}")
-    print(f"[METRICS] Unique Activities: {df['Activity_Name'].nunique()} ({', '.join(df['Activity_Name'].unique())})")
-    
-    # Calculate and display loopback count
-    cases_with_xray = set()
-    cases_with_loop = []
-    for cid, group in df.groupby("Case_ID"):
-        activities = group["Activity_Name"].tolist()
-        if "X-Ray" in activities:
-            cases_with_xray.add(cid)
-        for idx in range(len(activities) - 1):
-            if activities[idx] == "X-Ray" and activities[idx+1] == "Triage":
-                cases_with_loop.append(cid)
-                break
+    # Save to CSV
+    df.to_csv(OUTPUT_FILE, index=False)
 
-    xray_count = len(cases_with_xray)
-    loop_count = len(cases_with_loop)
-    xray_loop_pct = (loop_count / xray_count * 100) if xray_count else 0
-    total_loop_pct = (loop_count / df['Case_ID'].nunique()) * 100
-    print(f"[REWORK]  X-Ray Patients with Loopback: {loop_count}/{xray_count} ({xray_loop_pct:.1f}% of X-Ray cohort)")
-    print(f"[REWORK]  Overall Cohort Loopback Rate: {loop_count}/{df['Case_ID'].nunique()} ({total_loop_pct:.1f}% of all patients)")
+    # Calculate validation metrics
+    total_patients = df["Case_ID"].nunique()
+    total_events = len(df)
+
+    # Check process bug stats (X-Ray -> Triage rework loop)
+    bug_cases = 0
+    xray_cases = 0
+    for case_id, group in df.groupby("Case_ID"):
+        acts = group["Activity_Name"].tolist()
+        if "X-Ray" in acts:
+            xray_cases += 1
+            for idx in range(len(acts) - 1):
+                if acts[idx] == "X-Ray" and acts[idx + 1] == "Triage":
+                    bug_cases += 1
+                    break
+
+    bug_pct = (bug_cases / xray_cases * 100) if xray_cases > 0 else 0
+
+    # Print Validation Information
+    print("\n[SUCCESS] Synthetic EHR event log dataset generated successfully!")
+    print(f"[FILE PATH]      : {OUTPUT_FILE}")
+    print(f"Total Patients   : {total_patients}")
+    print(f"Total Events     : {total_events}")
+    print(f"Avg Events/Case  : {total_events / total_patients:.2f}")
+    print(f"X-Ray Cases      : {xray_cases}")
+    print(f"Process Bug Cases: {bug_cases} ({bug_pct:.1f}% of X-Ray cases looped back to Triage)")
+    print("\n--- SAMPLE ROWS ---")
+    print(df.head(10).to_string(index=False))
     print("=" * 60)
 
 
