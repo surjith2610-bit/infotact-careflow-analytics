@@ -42,6 +42,8 @@ logs/
 # BigQuery & Cloud Credentials
 *service-account*.json
 *credentials*.json
+*key*.json
+careflow-key.json
 .env
 .env.local
 
