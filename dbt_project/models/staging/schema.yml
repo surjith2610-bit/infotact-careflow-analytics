@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_ehr_logs
+    description: "Staged and cleansed EHR patient event logs."
+    columns:
+      - name: event_id
+        description: "Generated surrogate key for unique event identification."
+        tests:
+          - unique
+          - not_null
+
+      - name: case_id
+        description: "Cleansed patient case identifier."
+        tests:
+          - not_null
+
+      - name: activity
+        description: "Harmonized event activity name."
+        tests:
+          - not_null
+
+      - name: timestamp
+        description: "Standardized BigQuery TIMESTAMP of event occurrence."
+        tests:
+          - not_null

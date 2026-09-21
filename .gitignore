@@ -38,6 +38,12 @@ dbt_packages/
 dbt_modules/
 logs/
 *.log
+profiles.yml
+dbt_project/profiles.yml
+.user.yml
+dbt_project/.user.yml
+
+
 
 # BigQuery & Cloud Credentials
 *service-account*.json

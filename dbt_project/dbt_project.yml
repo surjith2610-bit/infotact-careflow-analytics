@@ -1,0 +1,21 @@
+name: 'careflow_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'careflow_dbt'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  careflow_dbt:
+    staging:
+      +materialized: view

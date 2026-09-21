@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: careflow_raw
+    database: careflow-analytics-189
+    schema: careflow_raw
+    tables:
+      - name: raw_event_log
+        description: "Raw patient EHR event logs imported into Google BigQuery."
+        columns:
+          - name: Case_ID
+            description: "Unique identifier for the patient journey/case."
+          - name: Activity_Name
+            description: "Clinical or administrative event activity name."
+          - name: Timestamp
+            description: "Event occurrence timestamp."
