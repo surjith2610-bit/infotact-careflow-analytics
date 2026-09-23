@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: event_log
+    description: "PM4Py-ready standardized event log mart model."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - case_id
+              - timestamp
+
+    columns:
+      - name: case_id
+        description: "Standardized patient case identifier."
+        tests:
+          - not_null
+
+      - name: activity
+        description: "Standardized clinical activity name."
+        tests:
+          - not_null
+
+      - name: timestamp
+        description: "Standardized event timestamp (TIMESTAMP type)."
+        tests:
+          - not_null
